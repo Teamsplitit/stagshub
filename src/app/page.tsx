@@ -771,7 +771,7 @@ export default function Home() {
             <p className="card-sub">
               Once the key is verified, users can enroll and log in to manage shared sections.
             </p>
-            <div className="list">
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div className="list-item">
                 <span>Enroll or log in</span>
                 <span className="badge">Step 1</span>

@@ -893,3 +893,128 @@ textarea.input {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(124, 136, 255, 0.4);
 }
+
+/* ── Auth / unauthenticated page ── */
+.hero {
+  margin-bottom: 8px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1.5px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand h1 {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: var(--grad-accent);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0;
+}
+
+.brand p {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--grad-accent);
+  box-shadow: 0 0 20px rgba(124, 136, 255, 0.3);
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── Grid Layouts ── */
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+}
+
+.grid-2 {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Form List ── */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+/* ── list-item (used in auth page info cards) ── */
+.list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+.list-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.list-item:first-child {
+  padding-top: 0;
+}
+
+/* ── badge (pill chip, used in list-items) ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  background: var(--glow-1);
+  color: var(--accent);
+  border: 1px solid rgba(124, 136, 255, 0.2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── pill (Locked indicator) ── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(251, 113, 133, 0.12);
+  color: #fb7185;
+  border: 1px solid rgba(251, 113, 133, 0.25);
+  letter-spacing: 0.04em;
+}
