@@ -110,6 +110,16 @@ export async function POST(
     };
     const result = await db.collection("sections").insertOne(section);
 
+    // Log activity
+    await db.collection("activity").insertOne({
+        groupId: groupId,
+        userId: sessionUser.id,
+        userName: sessionUser.displayName,
+        type: "section_created",
+        detail: `Created section "${name}"`,
+        createdAt: new Date(),
+    });
+
     return NextResponse.json({
         id: result.insertedId.toString(),
         name: section.name,

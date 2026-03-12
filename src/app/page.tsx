@@ -32,6 +32,26 @@ type Item = {
   userName: string;
   userId?: string;
   createdAt: string;
+  status: 'open' | 'in-progress' | 'done';
+  pinned: boolean;
+  reactions: { emoji: string; userIds: string[] }[];
+};
+
+type Notification = {
+  id: string;
+  type: string;
+  message: string;
+  read: boolean;
+  groupId?: string | null;
+  createdAt: string;
+};
+
+type ActivityEvent = {
+  id: string;
+  type: string;
+  userName: string;
+  detail: string;
+  createdAt: string;
 };
 
 type Me = {
@@ -92,10 +112,21 @@ export default function Home() {
   const [showGroupMenu, setShowGroupMenu] = useState(false);
   const [invitingUserId, setInvitingUserId] = useState<string | null>(null);
   const [inviteTargetGroupId, setInviteTargetGroupId] = useState("");
-  // Group sub-screens: null = main group view, 'create-section' | 'invite' | 'settings'
-  const [groupSubScreen, setGroupSubScreen] = useState<null | 'create-section' | 'invite' | 'settings'>(null);
+  // Group sub-screens: null = main group view, 'create-section' | 'invite' | 'settings' | 'activity'
+  const [groupSubScreen, setGroupSubScreen] = useState<null | 'create-section' | 'invite' | 'settings' | 'activity'>(null);
   const [groupDescription, setGroupDescription] = useState("");
   const [groupSettingsMembers, setGroupSettingsMembers] = useState<{ id: string; displayName: string; name: string; isAdmin: boolean }[]>([]);
+
+  // Notifications
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // Activity feed
+  const [groupActivity, setGroupActivity] = useState<ActivityEvent[]>([]);
+
+  // Invite link
+  const [groupInviteToken, setGroupInviteToken] = useState<string | null>(null);
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
 
   const selectedGroup = useMemo(
     () => groups.find((group) => group.id === selectedGroupId) || null,
@@ -137,7 +168,7 @@ export default function Home() {
           const meData = (await meRes.json()) as Me;
           if (!mounted) return;
           setMe(meData);
-          await Promise.all([loadUsers(), loadGroups(), loadFriends(), loadFriendRequests()]);
+          await Promise.all([loadUsers(), loadGroups(), loadFriends(), loadFriendRequests(), loadNotifications()]);
         }
       } catch (error) {
         console.error(error);
@@ -204,6 +235,83 @@ export default function Home() {
     setItems(data);
   };
 
+  const loadNotifications = async () => {
+    try {
+      const data = await api<Notification[]>("/api/notifications");
+      setNotifications(data);
+    } catch (e) {
+      console.error("Failed to load notifications", e);
+    }
+  };
+
+  const loadGroupActivity = async (groupId: string) => {
+    try {
+      const data = await api<ActivityEvent[]>(`/api/groups/${groupId}/activity`);
+      setGroupActivity(data);
+    } catch (e) {
+      console.error("Failed to load activity", e);
+    }
+  };
+
+  const toggleReaction = async (itemId: string, emoji: string) => {
+    try {
+      const data = await api<{ reactions: { emoji: string; userIds: string[] }[] }>(
+        `/api/items/${itemId}/reactions`,
+        { method: "POST", body: JSON.stringify({ emoji }) }
+      );
+      setItems((prev) => prev.map((item) => item.id === itemId ? { ...item, reactions: data.reactions } : item));
+    } catch (e) {
+      console.error("Failed to toggle reaction", e);
+    }
+  };
+
+  const cycleItemStatus = async (itemId: string, current: 'open' | 'in-progress' | 'done') => {
+    const next = current === 'open' ? 'in-progress' : current === 'in-progress' ? 'done' : 'open';
+    try {
+      await api(`/api/items/${itemId}`, { method: "PATCH", body: JSON.stringify({ status: next }) });
+      setItems((prev) => prev.map((item) => item.id === itemId ? { ...item, status: next } : item));
+    } catch (e) {
+      console.error("Failed to update status", e);
+    }
+  };
+
+  const toggleItemPin = async (itemId: string, pinned: boolean) => {
+    try {
+      await api(`/api/items/${itemId}`, { method: "PATCH", body: JSON.stringify({ pinned: !pinned }) });
+      setItems((prev) => {
+        const updated = prev.map((item) => item.id === itemId ? { ...item, pinned: !pinned } : item);
+        return [...updated.filter(i => i.pinned), ...updated.filter(i => !i.pinned)];
+      });
+    } catch (e) {
+      console.error("Failed to pin item", e);
+    }
+  };
+
+  const handleGetInviteLink = async (groupId: string) => {
+    try {
+      const data = await api<{ token: string }>(`/api/groups/${groupId}/invite-link`);
+      setGroupInviteToken(data.token);
+    } catch (e) {
+      console.error("Failed to get invite link", e);
+    }
+  };
+
+  const handleCopyInviteLink = async () => {
+    if (!groupInviteToken) return;
+    const url = `${window.location.origin}/api/invite/${groupInviteToken}`;
+    await navigator.clipboard.writeText(url);
+    setInviteLinkCopied(true);
+    setTimeout(() => setInviteLinkCopied(false), 2000);
+  };
+
+  const markNotificationsRead = async () => {
+    try {
+      await api("/api/notifications", { method: "POST" });
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch (e) {
+      console.error("Failed to mark notifications read", e);
+    }
+  };
 
 
   const handleGateSubmit = async (event: React.FormEvent) => {
@@ -556,13 +664,64 @@ export default function Home() {
   return (
     <div className="app-shell">
       {me && (
-        <div className="top-bar-actions">
+        <div className="top-bar-actions" style={{ alignItems: 'center', gap: '10px' }}>
+          {/* Notifications Bell */}
+          <div style={{ position: 'relative' }}>
+            <button
+              className="gh-dots-btn"
+              style={{ fontSize: '1.1rem' }}
+              onClick={() => {
+                setShowNotifications((v) => !v);
+                if (!showNotifications) markNotificationsRead();
+              }}
+              title="Notifications"
+            >
+              🔔
+              {notifications.filter((n) => !n.read).length > 0 && (
+                <span style={{
+                  position: 'absolute', top: '-4px', right: '-4px',
+                  width: '18px', height: '18px', borderRadius: '50%',
+                  background: 'var(--accent-rose)', color: '#fff',
+                  fontSize: '0.7rem', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: '2px solid var(--bg)',
+                }}>
+                  {Math.min(notifications.filter((n) => !n.read).length, 9)}
+                </span>
+              )}
+            </button>
+            {showNotifications && (
+              <div className="gh-dropdown" style={{ width: '300px', right: 0, maxHeight: '380px', overflowY: 'auto' }}>
+                <div style={{ padding: '10px 14px 6px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Notifications
+                </div>
+                {notifications.length === 0 ? (
+                  <div style={{ padding: '24px 14px', textAlign: 'center', color: 'var(--muted)', fontSize: '0.875rem' }}>
+                    All caught up! 🎉
+                  </div>
+                ) : notifications.map((n) => (
+                  <button
+                    key={n.id}
+                    className="gh-menu-item"
+                    style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '3px', opacity: n.read ? 0.65 : 1 }}
+                    onClick={() => {
+                      setShowNotifications(false);
+                      if (n.groupId) { setSelectedGroupId(n.groupId); setActiveTab('groups'); }
+                    }}
+                  >
+                    <span style={{ fontSize: '0.85rem', fontWeight: n.read ? 400 : 600 }}>{n.message}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>
+                      {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button className="btn-outline" onClick={toggleTheme}>
-            {theme === "light" ? "dark mode" : "light mode"}
+            {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
           </button>
-          <button className="btn-outline" onClick={handleLogout}>
-            logout
-          </button>
+          <button className="btn-outline" onClick={handleLogout}>Logout</button>
         </div>
       )}
       {!me && (
@@ -898,11 +1057,14 @@ export default function Home() {
                       <button className="gh-dots-btn" onClick={() => setShowGroupMenu(!showGroupMenu)}>⋮</button>
                       {showGroupMenu && (
                         <div className="gh-dropdown" onClick={() => setShowGroupMenu(false)}>
-                          <button className="gh-menu-item" onClick={() => { setGroupSubScreen('create-section'); }}>
+                          <button className="gh-menu-item" onClick={() => setGroupSubScreen('create-section')}>
                             <span>＋</span> Create Section
                           </button>
+                          <button className="gh-menu-item" onClick={() => { loadGroupActivity(selectedGroupId!); setGroupSubScreen('activity'); }}>
+                            <span>📋</span> Activity Feed
+                          </button>
                           {selectedGroup.adminIds?.includes(me?.id ?? '') && (
-                            <button className="gh-menu-item" onClick={() => { setGroupSubScreen('invite'); }}>
+                            <button className="gh-menu-item" onClick={() => setGroupSubScreen('invite')}>
                               <span>✉</span> Invite Friends
                             </button>
                           )}
@@ -1025,12 +1187,69 @@ export default function Home() {
                     </div>
                   )}
 
+                  {groupSubScreen === 'activity' && (
+                    <div className="sub-screen-panel fade-in">
+                      <div className="sub-screen-header">
+                        <h3>📋 Activity Feed</h3>
+                        <button className="gh-back-btn" onClick={() => setGroupSubScreen(null)}>✕</button>
+                      </div>
+                      {groupActivity.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '28px 0' }}>
+                          <div style={{ fontSize: '1.8rem', marginBottom: '8px' }}>🌱</div>
+                          <div style={{ fontWeight: 500 }}>No activity yet. Be the first!</div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                          {groupActivity.map((event, idx) => {
+                            const ICONS: Record<string, string> = { item_added: '📝', member_joined: '👋', member_promoted: '⚡', section_created: '📁' };
+                            return (
+                              <div key={event.id} style={{ display: 'flex', gap: '12px', padding: '12px 4px', borderBottom: idx < groupActivity.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'var(--glow-1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', flexShrink: 0 }}>
+                                  {ICONS[event.type] ?? '📣'}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>{event.detail}</div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '3px' }}>
+                                    {new Date(event.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {groupSubScreen === 'settings' && selectedGroup.adminIds?.includes(me?.id ?? '') && (
                     <div className="sub-screen-panel fade-in">
                       <div className="sub-screen-header">
                         <h3>Group Settings</h3>
                         <button className="gh-back-btn" onClick={() => setGroupSubScreen(null)}>✕</button>
                       </div>
+
+                      {/* Invite Link */}
+                      <div style={{ marginBottom: '24px' }}>
+                        <label style={{ fontSize: '0.8rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>Invite Link</label>
+                        {groupInviteToken ? (
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <input
+                              className="input"
+                              value={`${typeof window !== 'undefined' ? window.location.origin : ''}/api/invite/${groupInviteToken}`}
+                              readOnly
+                              style={{ fontSize: '0.8rem' }}
+                            />
+                            <button type="button" className="action-btn action-btn-primary" style={{ flexShrink: 0, padding: '8px 14px' }} onClick={handleCopyInviteLink}>
+                              {inviteLinkCopied ? '✓ Copied!' : 'Copy'}
+                            </button>
+                          </div>
+                        ) : (
+                          <button type="button" className="action-btn action-btn-secondary" style={{ width: '100%' }} onClick={() => handleGetInviteLink(selectedGroupId!)}>
+                            Generate Invite Link
+                          </button>
+                        )}
+                      </div>
+
                       <form onSubmit={handleSaveGroupSettings} style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '24px' }}>
                         <label style={{ fontSize: '0.8rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Group Description</label>
                         <textarea
@@ -1152,25 +1371,95 @@ export default function Home() {
                       </div>
                     )}
                     {items.map((item) => {
-                      const isOwner = item.userName === me?.displayName;
+                      const isOwner = item.userId === me?.id;
                       const isGroupAdmin = selectedGroup?.adminIds?.includes(me?.id ?? '');
                       const canDelete = isOwner || me?.isAdmin || isGroupAdmin;
+                      const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+                        'open': { bg: 'rgba(100,116,139,0.15)', color: 'var(--muted)', label: 'Open' },
+                        'in-progress': { bg: 'rgba(251,191,36,0.15)', color: '#fbbf24', label: 'In Progress' },
+                        'done': { bg: 'rgba(52,211,153,0.15)', color: '#34d399', label: 'Done' },
+                      };
+                      const st = STATUS_STYLE[item.status ?? 'open'];
+                      const EMOJIS = ['👍', '❤️', '🔥', '😂', '😮'];
                       return (
-                        <div key={item.id} className="item-row">
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 500, color: 'var(--text)', wordBreak: 'break-word' }}>{item.label}</div>
-                            <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginTop: '3px' }}>by {item.userName}</div>
+                        <div key={item.id} className="item-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                            {/* Status badge hidden for now — logic preserved, re-enable by changing false to (canDelete || isOwner) */}
+                            {false && (canDelete || isOwner) && (
+                              <button
+                                type="button"
+                                onClick={() => cycleItemStatus(item.id, item.status ?? 'open')}
+                                style={{
+                                  background: st.bg, color: st.color,
+                                  border: 'none', borderRadius: '7px',
+                                  padding: '4px 9px', fontSize: '0.72rem', fontWeight: 700,
+                                  cursor: 'pointer', flexShrink: 0, marginTop: '2px',
+                                  letterSpacing: '0.02em',
+                                }}
+                                title="Click to change status"
+                              >
+                                {st.label}
+                              </button>
+                            )}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 500, color: 'var(--text)', wordBreak: 'break-word' }}>
+                                {item.pinned && <span style={{ marginRight: '6px', fontSize: '0.85rem' }}>📌</span>}
+                                {item.label}
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginTop: '3px' }}>by {item.userName}</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                              {/* Pin button for admins */}
+                              {isGroupAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleItemPin(item.id, item.pinned)}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem', opacity: item.pinned ? 1 : 0.4, padding: '4px' }}
+                                  title={item.pinned ? 'Unpin' : 'Pin to top'}
+                                >
+                                  📌
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  className="action-btn action-btn-ghost-danger"
+                                  style={{ flexShrink: 0, padding: '4px 10px', fontSize: '0.8rem' }}
+                                  onClick={() => handleDeleteItem(item.id)}
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          {canDelete && (
-                            <button
-                              type="button"
-                              className="action-btn action-btn-ghost-danger"
-                              style={{ flexShrink: 0 }}
-                              onClick={() => handleDeleteItem(item.id)}
-                            >
-                              Delete
-                            </button>
-                          )}
+                          {/* Reactions bar */}
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {EMOJIS.map((emoji) => {
+                              const reaction = item.reactions?.find((r) => r.emoji === emoji);
+                              const hasReacted = reaction?.userIds?.includes(me?.id ?? '');
+                              const count = reaction?.userIds?.length ?? 0;
+                              return (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => toggleReaction(item.id, emoji)}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: '4px',
+                                    background: hasReacted ? 'var(--glow-1)' : 'rgba(255,255,255,0.04)',
+                                    border: `1.5px solid ${hasReacted ? 'var(--accent)' : 'var(--border)'}`,
+                                    borderRadius: '8px', padding: '3px 8px',
+                                    fontSize: '0.85rem', cursor: 'pointer',
+                                    color: hasReacted ? 'var(--accent)' : 'var(--muted)',
+                                    fontWeight: hasReacted ? 700 : 400,
+                                    transition: 'all 0.15s',
+                                  }}
+                                >
+                                  {emoji}
+                                  {count > 0 && <span style={{ fontSize: '0.75rem' }}>{count}</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })}

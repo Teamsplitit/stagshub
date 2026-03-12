@@ -62,6 +62,17 @@ export async function POST(request: NextRequest) {
     await db.collection("users").updateOne({ _id: senderId }, { $addToSet: { outgoingRequests: receiverId } } as any);
     await db.collection("users").updateOne({ _id: receiverId }, { $addToSet: { incomingRequests: senderId } } as any);
 
+    // Notify the recipient
+    await db.collection("notifications").insertOne({
+        userId: targetId,
+        type: "friend_request",
+        message: `${sessionUser.displayName} sent you a friend request`,
+        read: false,
+        groupId: null,
+        itemId: null,
+        createdAt: new Date(),
+    });
+
     return NextResponse.json({ ok: true });
 }
 
