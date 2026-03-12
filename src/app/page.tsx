@@ -55,7 +55,7 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export default function Home() {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [gateOk, setGateOk] = useState(false);
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState<Me | null>(null);
@@ -186,12 +186,10 @@ export default function Home() {
     const url = groupId ? `/api/groups/${groupId}/sections` : "/api/sections";
     const data = await api<Section[]>(url);
     setSections(data);
-    const nextSelected =
-      data.find((section) => section.id === selectedSectionId)?.id ?? data[0]?.id ?? null;
-    setSelectedSectionId(nextSelected);
-    if (nextSelected) {
-      await loadItems(nextSelected);
-    } else {
+    // Only preserve the existing selection if it's still in the new list — never auto-jump
+    const stillValid = data.some((s) => s.id === selectedSectionId);
+    if (!stillValid) {
+      setSelectedSectionId(null);
       setItems([]);
     }
   };
@@ -705,7 +703,7 @@ export default function Home() {
                   placeholder="Search user name to find friends"
                   value={userSearchQuery}
                   onChange={(e) => setUserSearchQuery(e.target.value)}
-                  style={{ background: 'transparent', borderBottom: '1px solid var(--border)', borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0 }}
+                  style={{ marginBottom: '6px' }}
                 />
               </div>
 
@@ -1183,38 +1181,45 @@ export default function Home() {
           )}
 
           {activeTab === "profile" && (
-            <div className="flex-column fade-in text-center" style={{ marginTop: '40px' }}>
+            <div className="flex-column fade-in text-center" style={{ marginTop: '32px', gap: '0' }}>
               <div className="avatar-circle avatar-large">
                 {me.displayName.slice(0, 1).toUpperCase()}
               </div>
-              <div style={{ marginBottom: "40px", color: "var(--accent)", fontSize: "1.2rem", fontWeight: "600" }}>
+              <div style={{
+                marginBottom: '36px',
+                fontSize: '1.5rem',
+                fontWeight: '800',
+                letterSpacing: '-0.03em',
+                background: 'var(--grad-accent)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}>
                 {me.displayName}
               </div>
+              <div style={{ color: 'var(--muted)', fontSize: '0.875rem', marginTop: '-30px', marginBottom: '32px' }}>@{me.name}</div>
 
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '60px', marginBottom: '80px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '48px', marginBottom: '48px' }}>
                 <div className="stat-item">
-                  <span style={{ color: "var(--accent)", fontWeight: "600", fontSize: "0.95rem", textTransform: "capitalize" }}>
-                    Groups - {groups.filter(g => g.memberIds.includes(me.id)).length.toString().padStart(2, '0')}
-                  </span>
+                  <span className="stat-value">{groups.filter(g => g.memberIds.includes(me.id)).length.toString().padStart(2, '0')}</span>
+                  <span className="stat-label">Groups</span>
                 </div>
                 <div className="stat-item">
-                  <span style={{ color: "var(--accent)", fontWeight: "600", fontSize: "0.95rem", textTransform: "capitalize" }}>
-                    Friends - {friends.length.toString().padStart(2, '0')}
-                  </span>
+                  <span className="stat-value">{friends.length.toString().padStart(2, '0')}</span>
+                  <span className="stat-label">Friends</span>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '300px', margin: '0 auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', width: '100%', maxWidth: '320px', margin: '0 auto' }}>
                 <form onSubmit={handleUpdateName} style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
                   <input
                     className="input text-center"
                     placeholder="New display name"
                     value={profileNameInput}
                     onChange={(event) => setProfileNameInput(event.target.value)}
-                    style={{ background: 'transparent', borderBottom: '1px solid var(--border)', borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0, color: 'var(--text)' }}
                   />
-                  <button className="btn-outline" style={{ border: 'none' }} type="submit">
-                    edit profile
+                  <button className="action-btn action-btn-primary" type="submit">
+                    Update Name
                   </button>
                 </form>
 
@@ -1226,20 +1231,19 @@ export default function Home() {
                       placeholder="New password"
                       value={newPasswordInput}
                       onChange={(event) => setNewPasswordInput(event.target.value)}
-                      style={{ background: 'transparent', borderBottom: '1px solid var(--border)', borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0, color: 'var(--text)' }}
                     />
                     <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
-                      <button className="btn-outline" style={{ border: 'none', flex: 1 }} type="button" onClick={() => setShowPasswordChange(false)}>
-                        cancel
+                      <button className="action-btn action-btn-secondary" style={{ flex: 1 }} type="button" onClick={() => setShowPasswordChange(false)}>
+                        Cancel
                       </button>
-                      <button className="btn-outline" style={{ border: 'none', flex: 1 }} type="submit">
-                        save
+                      <button className="action-btn action-btn-primary" style={{ flex: 1 }} type="submit">
+                        Save
                       </button>
                     </div>
                   </form>
                 ) : (
-                  <button className="btn-outline" style={{ border: 'none' }} onClick={() => setShowPasswordChange(true)}>
-                    change password
+                  <button className="action-btn action-btn-secondary" style={{ width: '100%' }} onClick={() => setShowPasswordChange(true)}>
+                    Change Password
                   </button>
                 )}
               </div>
