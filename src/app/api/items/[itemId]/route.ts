@@ -47,6 +47,11 @@ export async function PATCH(
   if (Object.keys(updates).length === 0) return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
 
   await db.collection("items").updateOne({ _id: new ObjectId(itemId) }, { $set: updates });
+
+  if ((global as any).io) {
+    (global as any).io.to(`section:${item.sectionId}`).emit("item_updated", { itemId, updates });
+  }
+
   return NextResponse.json({ ok: true });
 }
 
@@ -65,9 +70,19 @@ export async function DELETE(
   const item = await db.collection("items").findOne({ _id: itemObjectId });
   if (!item) return NextResponse.json({ error: "Item not found." }, { status: 404 });
 
+  const sectionId = item.sectionId.toString();
+
+  const performDelete = async () => {
+    await db.collection("items").deleteOne({ _id: itemObjectId });
+    if ((global as any).io) {
+      (global as any).io.to(`section:${sectionId}`).emit("item_deleted", { itemId });
+    }
+    return NextResponse.json({ ok: true });
+  };
+
   const isOwner = item.userId?.toString() === sessionUser.id;
-  if (isOwner) { await db.collection("items").deleteOne({ _id: itemObjectId }); return NextResponse.json({ ok: true }); }
-  if (sessionUser.isAdmin) { await db.collection("items").deleteOne({ _id: itemObjectId }); return NextResponse.json({ ok: true }); }
+  if (isOwner) return performDelete();
+  if (sessionUser.isAdmin) return performDelete();
 
   const section = await db.collection("sections").findOne({ _id: item.sectionId });
   if (section?.groupId) {
@@ -75,7 +90,7 @@ export async function DELETE(
     if (group) {
       const adminIds: ObjectId[] = group.adminIds ?? [];
       const isGroupAdmin = group.adminId?.toString() === sessionUser.id || adminIds.some((id: ObjectId) => id.equals(new ObjectId(sessionUser.id)));
-      if (isGroupAdmin) { await db.collection("items").deleteOne({ _id: itemObjectId }); return NextResponse.json({ ok: true }); }
+      if (isGroupAdmin) return performDelete();
     }
   }
   return NextResponse.json({ error: "You can only delete your own items." }, { status: 403 });

@@ -58,5 +58,11 @@ export async function POST(
     }
 
     const updated = await db.collection("items").findOne({ _id: new ObjectId(itemId) });
-    return NextResponse.json({ reactions: updated?.reactions ?? [] });
+    const result = { reactions: updated?.reactions ?? [] };
+
+    if ((global as any).io) {
+        (global as any).io.emit("reaction_toggled", { itemId, reactions: result.reactions });
+    }
+
+    return NextResponse.json(result);
 }

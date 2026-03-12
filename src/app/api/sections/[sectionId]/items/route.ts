@@ -106,6 +106,17 @@ export async function POST(
           createdAt: new Date(),
         }))
       );
+
+      if ((global as any).io) {
+        otherMemberIds.forEach(id => {
+          (global as any).io.to(`user:${id}`).emit("notification_received", {
+            type: "new_item",
+            message: `${sessionUser.displayName} added "${label}" in ${group.name}`,
+            groupId,
+            createdAt: new Date(),
+          });
+        });
+      }
     }
 
     await db.collection("activity").insertOne({
@@ -129,14 +140,20 @@ export async function POST(
   };
   const result = await db.collection("items").insertOne(item);
 
-  return NextResponse.json({
+  const responseData = {
     id: result.insertedId.toString(),
     label,
     userName: sessionUser.displayName,
     userId: sessionUser.id,
     createdAt: item.createdAt,
-    status: "open",
-    pinned: false,
+    status: (item.status as "open" | "in-progress" | "done") ?? "open",
+    pinned: item.pinned ?? false,
     reactions: [],
-  });
+  };
+
+  if ((global as any).io) {
+    (global as any).io.to(`section:${sectionId}`).emit("item_added", responseData);
+  }
+
+  return NextResponse.json(responseData);
 }

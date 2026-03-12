@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getSocket, joinGroup, joinSection, joinUser } from "@/lib/socket";
 
 type User = {
   id: string;
@@ -74,10 +75,24 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+function Loader({ text }: { text?: string }) {
+  return (
+    <div className="loader-container fade-in">
+      <div className="loader"></div>
+      {text && <div className="loader-text">{text}</div>}
+    </div>
+  );
+}
+
 export default function Home() {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [gateOk, setGateOk] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [sectionsLoading, setSectionsLoading] = useState(false);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -94,6 +109,10 @@ export default function Home() {
   const [incomingRequests, setIncomingRequests] = useState<User[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<User[]>([]);
   const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [groupSearchQuery, setGroupSearchQuery] = useState("");
+  const [sectionSearchQuery, setSectionSearchQuery] = useState("");
+  const [itemSearchQuery, setItemSearchQuery] = useState("");
+  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [items, setItems] = useState<Item[]>([]);
@@ -182,6 +201,68 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    if (me) {
+      const socket = getSocket();
+      if (socket) {
+        joinUser(me.id);
+
+        socket.on("item_added", (newItem: Item) => {
+          setItems((prev) => {
+            if (prev.some(i => i.id === newItem.id)) return prev;
+            return [newItem, ...prev].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+          });
+        });
+
+        socket.on("item_updated", ({ itemId, updates }: { itemId: string, updates: Partial<Item> }) => {
+          setItems((prev) => prev.map(item => item.id === itemId ? { ...item, ...updates } : item).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)));
+        });
+
+        socket.on("item_deleted", ({ itemId }: { itemId: string }) => {
+          setItems((prev) => prev.filter(item => item.id !== itemId));
+        });
+
+        socket.on("reaction_toggled", ({ itemId, reactions }: { itemId: string, reactions: any[] }) => {
+          setItems((prev) => prev.map(item => item.id === itemId ? { ...item, reactions } : item));
+        });
+
+        socket.on("section_added", (newSection: Section) => {
+          setSections((prev) => {
+            if (prev.some(s => s.id === newSection.id)) return prev;
+            return [...prev, newSection];
+          });
+        });
+
+        socket.on("section_deleted", ({ sectionId }: { sectionId: string }) => {
+          setSections((prev) => prev.filter(s => s.id !== sectionId));
+          if (selectedSectionId === sectionId) setSelectedSectionId(null);
+        });
+
+        socket.on("notification_received", (notification: Notification) => {
+          setNotifications((prev) => [notification, ...prev]);
+        });
+
+        return () => {
+          socket.off("item_added");
+          socket.off("item_updated");
+          socket.off("item_deleted");
+          socket.off("reaction_toggled");
+          socket.off("section_added");
+          socket.off("section_deleted");
+          socket.off("notification_received");
+        };
+      }
+    }
+  }, [me, selectedSectionId]);
+
+  useEffect(() => {
+    if (selectedGroupId) joinGroup(selectedGroupId);
+  }, [selectedGroupId]);
+
+  useEffect(() => {
+    if (selectedSectionId) joinSection(selectedSectionId);
+  }, [selectedSectionId]);
+
   const toggleTheme = () => {
     const next = theme === "light" ? "dark" : "light";
     setTheme(next);
@@ -214,25 +295,46 @@ export default function Home() {
   };
 
   const loadSections = async (groupId?: string | null) => {
-    const url = groupId ? `/api/groups/${groupId}/sections` : "/api/sections";
-    const data = await api<Section[]>(url);
-    setSections(data);
-    // Only preserve the existing selection if it's still in the new list — never auto-jump
-    const stillValid = data.some((s) => s.id === selectedSectionId);
-    if (!stillValid) {
-      setSelectedSectionId(null);
-      setItems([]);
+    setSectionsLoading(true);
+    try {
+      const url = groupId ? `/api/groups/${groupId}/sections` : "/api/sections";
+      const data = await api<Section[]>(url);
+      setSections(data);
+      // Only preserve the existing selection if it's still in the new list — never auto-jump
+      const stillValid = data.some((s) => s.id === selectedSectionId);
+      if (!stillValid) {
+        setSelectedSectionId(null);
+        setItems([]);
+      }
+    } catch (e) {
+      console.error("Failed to load sections", e);
+    } finally {
+      setSectionsLoading(false);
     }
   };
 
   const loadGroups = async () => {
-    const data = await api<Group[]>("/api/groups");
-    setGroups(data);
+    setGroupsLoading(true);
+    try {
+      const data = await api<Group[]>("/api/groups");
+      setGroups(data);
+    } catch (e) {
+      console.error("Failed to load groups", e);
+    } finally {
+      setGroupsLoading(false);
+    }
   };
 
   const loadItems = async (sectionId: string) => {
-    const data = await api<Item[]>(`/api/sections/${sectionId}/items`);
-    setItems(data);
+    setItemsLoading(true);
+    try {
+      const data = await api<Item[]>(`/api/sections/${sectionId}/items`);
+      setItems(data);
+    } catch (e) {
+      console.error("Failed to load items", e);
+    } finally {
+      setItemsLoading(false);
+    }
   };
 
   const loadNotifications = async () => {
@@ -245,11 +347,14 @@ export default function Home() {
   };
 
   const loadGroupActivity = async (groupId: string) => {
+    setActivityLoading(true);
     try {
       const data = await api<ActivityEvent[]>(`/api/groups/${groupId}/activity`);
       setGroupActivity(data);
     } catch (e) {
       console.error("Failed to load activity", e);
+    } finally {
+      setActivityLoading(false);
     }
   };
 
@@ -735,7 +840,7 @@ export default function Home() {
               </div>
             </div>
             <div className="toolbar-actions">
-              <span className="pill">Locked</span>
+              {/* Locked pill removed */}
               <button className="btn-outline" onClick={toggleTheme}>
                 {theme === "light" ? "dark mode" : "light mode"}
               </button>
@@ -1008,6 +1113,13 @@ export default function Home() {
               {!selectedGroup ? (
                 <>
                   <div className="card" style={{ marginBottom: "20px" }}>
+                    <input
+                      className="input"
+                      placeholder="Search groups..."
+                      value={groupSearchQuery}
+                      onChange={(e) => setGroupSearchQuery(e.target.value)}
+                      style={{ marginBottom: '16px' }}
+                    />
                     <form onSubmit={handleCreateGroup} style={{ display: 'flex', gap: '10px' }}>
                       <input
                         className="input"
@@ -1023,18 +1135,22 @@ export default function Home() {
                   </div>
 
                   <div className="flex-column" style={{ gap: '12px' }}>
-                    {groups.map((group) => (
-                      <div key={group.id} className="user-list-item" style={{ cursor: 'pointer', borderRadius: '8px' }} onClick={() => handleSelectGroup(group.id)}>
-                        <div className="user-info">
-                          <div className="avatar-circle">
-                            {group.name.slice(0, 1).toUpperCase()}
-                          </div>
-                          <div style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '1.1rem' }}>
-                            {group.name}
+                    {groupsLoading ? (
+                      <Loader text="Loading your groups..." />
+                    ) : groups
+                      .filter(g => g.name.toLowerCase().includes(groupSearchQuery.toLowerCase()))
+                      .map((group) => (
+                        <div key={group.id} className="user-list-item" style={{ cursor: 'pointer', borderRadius: '8px' }} onClick={() => handleSelectGroup(group.id)}>
+                          <div className="user-info">
+                            <div className="avatar-circle">
+                              {group.name.slice(0, 1).toUpperCase()}
+                            </div>
+                            <div style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '1.1rem' }}>
+                              {group.name}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
                   </div>
                 </>
               ) : !selectedSection ? (
@@ -1193,7 +1309,9 @@ export default function Home() {
                         <h3>📋 Activity Feed</h3>
                         <button className="gh-back-btn" onClick={() => setGroupSubScreen(null)}>✕</button>
                       </div>
-                      {groupActivity.length === 0 ? (
+                      {activityLoading ? (
+                        <Loader text="Loading activity..." />
+                      ) : groupActivity.length === 0 ? (
                         <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '28px 0' }}>
                           <div style={{ fontSize: '1.8rem', marginBottom: '8px' }}>🌱</div>
                           <div style={{ fontWeight: 500 }}>No activity yet. Be the first!</div>
@@ -1308,33 +1426,44 @@ export default function Home() {
                   {/* Sections list */}
                   {!groupSubScreen && (
                     <div className="flex-column" style={{ gap: '8px', marginTop: '8px' }}>
-                      {sections.length === 0 && (
+                      <div className="card" style={{ marginBottom: "12px", padding: '12px' }}>
+                        <input
+                          className="input"
+                          placeholder="Search sections..."
+                          value={sectionSearchQuery}
+                          onChange={(e) => setSectionSearchQuery(e.target.value)}
+                        />
+                      </div>
+                      {sectionsLoading ? (
+                        <Loader text="Loading sections..." />
+                      ) : sections.length === 0 ? (
                         <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '40px 20px' }}>
                           <div style={{ fontSize: '2rem', marginBottom: '10px' }}>📂</div>
                           <div style={{ fontWeight: 500 }}>No sections yet</div>
                           <div style={{ fontSize: '0.875rem', marginTop: '6px' }}>Use the ⋮ menu to create a section</div>
                         </div>
-                      )}
-                      {sections.map((section) => (
-                        <div key={section.id} className="section-row" onClick={() => handleSelectSection(section.id)}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-                            <div className="section-icon">§</div>
-                            <span style={{ fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.name}</span>
+                      ) : sections
+                        .filter(s => s.name.toLowerCase().includes(sectionSearchQuery.toLowerCase()))
+                        .map((section) => (
+                          <div key={section.id} className="section-row" onClick={() => handleSelectSection(section.id)}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                              <div className="section-icon">§</div>
+                              <span style={{ fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.name}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {selectedGroup.adminIds?.includes(me?.id ?? '') && (
+                                <button
+                                  type="button"
+                                  className="action-btn action-btn-ghost-danger"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id); }}
+                                >
+                                  Delete
+                                </button>
+                              )}
+                              <span style={{ color: 'var(--muted)', fontSize: '1.1rem' }}>›</span>
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {selectedGroup.adminIds?.includes(me?.id ?? '') && (
-                              <button
-                                type="button"
-                                className="action-btn action-btn-ghost-danger"
-                                onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id); }}
-                              >
-                                Delete
-                              </button>
-                            )}
-                            <span style={{ color: 'var(--muted)', fontSize: '1.1rem' }}>›</span>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   )}
                 </>
@@ -1362,107 +1491,152 @@ export default function Home() {
                     </form>
                   </div>
 
+                  <div className="card" style={{ marginBottom: "16px", padding: '12px' }}>
+                    <input
+                      className="input"
+                      placeholder="Search items..."
+                      value={itemSearchQuery}
+                      onChange={(e) => setItemSearchQuery(e.target.value)}
+                    />
+                  </div>
+
                   <div className="flex-column" style={{ gap: '10px' }}>
-                    {items.length === 0 && (
+                    {itemsLoading ? (
+                      <Loader text="Loading items..." />
+                    ) : items.length === 0 ? (
                       <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '40px 20px' }}>
                         <div style={{ fontSize: '2rem', marginBottom: '10px' }}>📝</div>
                         <div style={{ fontWeight: 500 }}>No items yet</div>
                         <div style={{ fontSize: '0.875rem', marginTop: '6px' }}>Be the first to add something</div>
                       </div>
-                    )}
-                    {items.map((item) => {
-                      const isOwner = item.userId === me?.id;
-                      const isGroupAdmin = selectedGroup?.adminIds?.includes(me?.id ?? '');
-                      const canDelete = isOwner || me?.isAdmin || isGroupAdmin;
-                      const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-                        'open': { bg: 'rgba(100,116,139,0.15)', color: 'var(--muted)', label: 'Open' },
-                        'in-progress': { bg: 'rgba(251,191,36,0.15)', color: '#fbbf24', label: 'In Progress' },
-                        'done': { bg: 'rgba(52,211,153,0.15)', color: '#34d399', label: 'Done' },
-                      };
-                      const st = STATUS_STYLE[item.status ?? 'open'];
-                      const EMOJIS = ['👍', '❤️', '🔥', '😂', '😮'];
-                      return (
-                        <div key={item.id} className="item-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '10px' }}>
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                            {/* Status badge hidden for now — logic preserved, re-enable by changing false to (canDelete || isOwner) */}
-                            {false && (canDelete || isOwner) && (
-                              <button
-                                type="button"
-                                onClick={() => cycleItemStatus(item.id, item.status ?? 'open')}
-                                style={{
-                                  background: st.bg, color: st.color,
-                                  border: 'none', borderRadius: '7px',
-                                  padding: '4px 9px', fontSize: '0.72rem', fontWeight: 700,
-                                  cursor: 'pointer', flexShrink: 0, marginTop: '2px',
-                                  letterSpacing: '0.02em',
-                                }}
-                                title="Click to change status"
-                              >
-                                {st.label}
-                              </button>
-                            )}
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 500, color: 'var(--text)', wordBreak: 'break-word' }}>
-                                {item.pinned && <span style={{ marginRight: '6px', fontSize: '0.85rem' }}>📌</span>}
-                                {item.label}
-                              </div>
-                              <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginTop: '3px' }}>by {item.userName}</div>
-                            </div>
-                            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                              {/* Pin button for admins */}
-                              {isGroupAdmin && (
+                    ) : items
+                      .filter(i => i.label.toLowerCase().includes(itemSearchQuery.toLowerCase()))
+                      .map((item) => {
+                        const isOwner = item.userId === me?.id;
+                        const isGroupAdmin = selectedGroup?.adminIds?.includes(me?.id ?? '');
+                        const canDelete = isOwner || me?.isAdmin || isGroupAdmin;
+                        const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+                          'open': { bg: 'rgba(100,116,139,0.15)', color: 'var(--muted)', label: 'Open' },
+                          'in-progress': { bg: 'rgba(251,191,36,0.15)', color: '#fbbf24', label: 'In Progress' },
+                          'done': { bg: 'rgba(52,211,153,0.15)', color: '#34d399', label: 'Done' },
+                        };
+                        const st = STATUS_STYLE[item.status ?? 'open'];
+                        const EMOJIS = ['👍', '❤️', '🔥', '😂', '😮'];
+                        return (
+                          <div key={item.id} className="item-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                              {/* Status badge hidden for now — logic preserved, re-enable by changing false to (canDelete || isOwner) */}
+                              {false && (canDelete || isOwner) && (
                                 <button
                                   type="button"
-                                  onClick={() => toggleItemPin(item.id, item.pinned)}
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem', opacity: item.pinned ? 1 : 0.4, padding: '4px' }}
-                                  title={item.pinned ? 'Unpin' : 'Pin to top'}
-                                >
-                                  📌
-                                </button>
-                              )}
-                              {canDelete && (
-                                <button
-                                  type="button"
-                                  className="action-btn action-btn-ghost-danger"
-                                  style={{ flexShrink: 0, padding: '4px 10px', fontSize: '0.8rem' }}
-                                  onClick={() => handleDeleteItem(item.id)}
-                                >
-                                  ✕
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          {/* Reactions bar */}
-                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            {EMOJIS.map((emoji) => {
-                              const reaction = item.reactions?.find((r) => r.emoji === emoji);
-                              const hasReacted = reaction?.userIds?.includes(me?.id ?? '');
-                              const count = reaction?.userIds?.length ?? 0;
-                              return (
-                                <button
-                                  key={emoji}
-                                  type="button"
-                                  onClick={() => toggleReaction(item.id, emoji)}
+                                  onClick={() => cycleItemStatus(item.id, item.status ?? 'open')}
                                   style={{
-                                    display: 'flex', alignItems: 'center', gap: '4px',
-                                    background: hasReacted ? 'var(--glow-1)' : 'rgba(255,255,255,0.04)',
-                                    border: `1.5px solid ${hasReacted ? 'var(--accent)' : 'var(--border)'}`,
-                                    borderRadius: '8px', padding: '3px 8px',
-                                    fontSize: '0.85rem', cursor: 'pointer',
-                                    color: hasReacted ? 'var(--accent)' : 'var(--muted)',
-                                    fontWeight: hasReacted ? 700 : 400,
-                                    transition: 'all 0.15s',
+                                    background: st.bg, color: st.color,
+                                    border: 'none', borderRadius: '7px',
+                                    padding: '4px 9px', fontSize: '0.72rem', fontWeight: 700,
+                                    cursor: 'pointer', flexShrink: 0, marginTop: '2px',
+                                    letterSpacing: '0.02em',
                                   }}
+                                  title="Click to change status"
                                 >
-                                  {emoji}
-                                  {count > 0 && <span style={{ fontSize: '0.75rem' }}>{count}</span>}
+                                  {st.label}
                                 </button>
-                              );
-                            })}
+                              )}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 500, color: 'var(--text)', wordBreak: 'break-word' }}>
+                                  {item.pinned && <span style={{ marginRight: '6px', fontSize: '0.85rem' }}>📌</span>}
+                                  {item.label}
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginTop: '3px' }}>by {item.userName}</div>
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                                {/* Pin button for admins */}
+                                {isGroupAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleItemPin(item.id, item.pinned)}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem', opacity: item.pinned ? 1 : 0.4, padding: '4px' }}
+                                    title={item.pinned ? 'Unpin' : 'Pin to top'}
+                                  >
+                                    📌
+                                  </button>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    type="button"
+                                    className="action-btn action-btn-ghost-danger"
+                                    style={{ flexShrink: 0, padding: '4px 10px', fontSize: '0.8rem' }}
+                                    onClick={() => handleDeleteItem(item.id)}
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            {/* Reactions bar simplified */}
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                              {EMOJIS.map((emoji) => {
+                                const reaction = item.reactions?.find((r) => r.emoji === emoji);
+                                const hasReacted = reaction?.userIds?.includes(me?.id ?? '');
+                                const count = reaction?.userIds?.length ?? 0;
+
+                                if (count === 0 && !hasReacted) return null;
+
+                                return (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={() => toggleReaction(item.id, emoji)}
+                                    style={{
+                                      display: 'flex', alignItems: 'center', gap: '4px',
+                                      background: hasReacted ? 'var(--glow-1)' : 'rgba(255,255,255,0.04)',
+                                      border: `1.5px solid ${hasReacted ? 'var(--accent)' : 'var(--border)'}`,
+                                      borderRadius: '8px', padding: '3px 8px',
+                                      fontSize: '0.85rem', cursor: 'pointer',
+                                      color: hasReacted ? 'var(--accent)' : 'var(--muted)',
+                                      fontWeight: hasReacted ? 700 : 400,
+                                      transition: 'all 0.15s',
+                                    }}
+                                  >
+                                    {emoji}
+                                    {count > 0 && <span style={{ fontSize: '0.75rem' }}>{count}</span>}
+                                  </button>
+                                );
+                              })}
+
+                              {/* Reaction Picker Trigger */}
+                              <div style={{ position: 'relative' }}>
+                                <button
+                                  type="button"
+                                  className="action-btn action-btn-ghost"
+                                  style={{ padding: '4px 8px', fontSize: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px' }}
+                                  onClick={() => setShowReactionPicker(showReactionPicker === item.id ? null : item.id)}
+                                >
+                                  ☺+
+                                </button>
+
+                                {showReactionPicker === item.id && (
+                                  <div className="gh-dropdown" style={{ bottom: 'calc(100% + 8px)', top: 'auto', left: 0, flexDirection: 'row', width: 'auto', minWidth: 'auto', padding: '4px' }}>
+                                    {EMOJIS.map((emoji) => (
+                                      <button
+                                        key={emoji}
+                                        className="gh-menu-item"
+                                        style={{ padding: '6px 8px', fontSize: '1.1rem', width: 'auto' }}
+                                        onClick={() => {
+                                          toggleReaction(item.id, emoji);
+                                          setShowReactionPicker(null);
+                                        }}
+                                      >
+                                        {emoji}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                   </div>
                 </>
               )}

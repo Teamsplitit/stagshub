@@ -53,6 +53,15 @@ export async function POST(
         createdAt: new Date(),
     });
 
+    if ((global as any).io) {
+        (global as any).io.to(`user:${userId}`).emit("notification_received", {
+            type: "group_invite",
+            message: `${sessionUser.displayName} added you to "${group.name}"`,
+            groupId: groupId,
+            createdAt: new Date(),
+        });
+    }
+
     // Log activity
     const invitedUser = await db.collection("users").findOne({ _id: memberId }, { projection: { displayName: 1 } });
     await db.collection("activity").insertOne({

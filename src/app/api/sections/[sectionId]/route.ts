@@ -41,5 +41,9 @@ export async function DELETE(
   await db.collection("items").deleteMany({ sectionId: sectionObjectId });
   await db.collection("sections").deleteOne({ _id: sectionObjectId });
 
+  if ((global as any).io && section.groupId) {
+    (global as any).io.to(`group:${section.groupId.toString()}`).emit("section_deleted", { sectionId });
+  }
+
   return NextResponse.json({ ok: true });
 }

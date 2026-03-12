@@ -148,6 +148,7 @@ textarea {
   justify-content: flex-end;
   gap: 10px;
   margin-bottom: 0;
+  flex-wrap: wrap;
 }
 
 /* ── Brand / Auth Header ── */
@@ -944,6 +945,7 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* ── Grid Layouts ── */

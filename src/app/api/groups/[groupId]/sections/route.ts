@@ -120,11 +120,17 @@ export async function POST(
         createdAt: new Date(),
     });
 
-    return NextResponse.json({
+    const responseData = {
         id: result.insertedId.toString(),
         name: section.name,
         slug: section.slug,
         isPrivate: section.isPrivate,
         groupId: section.groupId.toString(),
-    });
+    };
+
+    if ((global as any).io) {
+        (global as any).io.to(`group:${groupId}`).emit("section_added", responseData);
+    }
+
+    return NextResponse.json(responseData);
 }
