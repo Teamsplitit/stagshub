@@ -877,7 +877,7 @@ export default function Home() {
                 )}
               </button>
               {showNotifications && (
-                <div className="gh-dropdown notifications-dropdown" style={{ width: '300px', maxWidth: 'calc(100vw - 24px)', maxHeight: '380px', overflowY: 'auto' }}>
+                <div className="gh-dropdown notifications-dropdown" style={{ width: '280px', maxWidth: 'calc(100vw - 24px)', maxHeight: '380px', overflowY: 'auto' }}>
                   <div style={{ padding: '10px 14px 6px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                     Notifications
                   </div>
@@ -1583,12 +1583,13 @@ export default function Home() {
                                 <button
                                   type="button"
                                   className="action-btn action-btn-ghost-danger"
+                                  style={{ padding: '6px', fontSize: '1rem' }}
                                   onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id); }}
+                                  title="Delete Section"
                                 >
-                                  Delete
+                                  🗑️
                                 </button>
                               )}
-                              <span style={{ color: 'var(--muted)', fontSize: '1.1rem' }}>›</span>
                             </div>
                           </div>
                         ))}
