@@ -681,6 +681,15 @@ textarea.input {
   animation: pop-in 0.18s var(--ease);
 }
 
+.notifications-dropdown {
+  right: -12px;
+}
+@media (max-width: 600px) {
+  .notifications-dropdown {
+    right: -80px;
+  }
+}
+
 [data-theme="light"] .gh-dropdown {
   background: #fff;
 }
@@ -813,6 +822,7 @@ textarea.input {
 /* ── Member Settings Row ── */
 .member-settings-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;

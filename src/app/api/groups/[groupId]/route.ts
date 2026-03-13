@@ -42,7 +42,13 @@ export async function DELETE(
     // 3. Delete the group's sections
     await db.collection("sections").deleteMany({ groupId: groupObjectId });
 
-    // 4. Finally, delete the group itself
+    // 4. Delete group activity
+    await db.collection("activity").deleteMany({ groupId: groupId });
+
+    // 5. Delete group notifications
+    await db.collection("notifications").deleteMany({ groupId: groupId });
+
+    // 6. Finally, delete the group itself
     await db.collection("groups").deleteOne({ _id: groupObjectId });
 
     return NextResponse.json({ ok: true });

@@ -840,11 +840,11 @@ export default function Home() {
           <div>
             {(activeTab === 'groups' && selectedGroup) && (
               !selectedSection ? (
-                <button className="gh-back-btn" onClick={() => { handleSelectGroup(null); setGroupSubScreen(null); setShowGroupMenu(false); }} title="Back" style={{ border: 'none', background: 'transparent', fontSize: '1.2rem', padding: '4px 8px' }}>
+                <button className="gh-back-btn" onClick={() => { handleSelectGroup(null); setGroupSubScreen(null); setShowGroupMenu(false); }} title="Back" style={{ fontSize: '1.2rem', padding: '4px 8px' }}>
                   ←
                 </button>
               ) : (
-                <button className="gh-back-btn" onClick={() => handleSelectSection(null)} title="Back" style={{ border: 'none', background: 'transparent', fontSize: '1.2rem', padding: '4px 8px' }}>
+                <button className="gh-back-btn" onClick={() => handleSelectSection(null)} title="Back" style={{ fontSize: '1.2rem', padding: '4px 8px' }}>
                   ←
                 </button>
               )
@@ -877,7 +877,7 @@ export default function Home() {
                 )}
               </button>
               {showNotifications && (
-                <div className="gh-dropdown" style={{ width: '300px', maxWidth: 'calc(100vw - 24px)', right: '-12px', maxHeight: '380px', overflowY: 'auto' }}>
+                <div className="gh-dropdown notifications-dropdown" style={{ width: '300px', maxWidth: 'calc(100vw - 24px)', maxHeight: '380px', overflowY: 'auto' }}>
                   <div style={{ padding: '10px 14px 6px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                     Notifications
                   </div>
@@ -1516,7 +1516,7 @@ export default function Home() {
                                   </div>
                                 </div>
                                 {member.id !== me?.id && (
-                                  <div style={{ display: 'flex', gap: '6px' }}>
+                                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0, flexWrap: 'wrap' }}>
                                     {canPromote && (
                                       <button className="action-btn action-btn-secondary" style={{ padding: '5px 12px', fontSize: '0.78rem' }} onClick={() => handlePromoteToAdmin(member.id)}>
                                         Make Admin
@@ -1533,6 +1533,20 @@ export default function Home() {
                             );
                           })}
                         </div>
+                      </div>
+
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '20px', marginTop: '20px' }}>
+                        <label style={{ fontSize: '0.8rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '14px' }}>Danger Zone</label>
+                        <button 
+                          className="action-btn action-btn-danger" 
+                          style={{ width: '100%' }} 
+                          onClick={() => {
+                            setGroupSubScreen(null);
+                            handleDeleteGroup(selectedGroupId!);
+                          }}
+                        >
+                          Delete Group
+                        </button>
                       </div>
                     </div>
                   )}
