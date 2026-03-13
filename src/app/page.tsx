@@ -877,7 +877,7 @@ export default function Home() {
                 )}
               </button>
               {showNotifications && (
-                <div className="gh-dropdown notifications-dropdown" style={{ width: '280px', maxWidth: 'calc(100vw - 24px)', maxHeight: '380px', overflowY: 'auto' }}>
+                <div className="gh-dropdown notifications-dropdown" style={{ width: '270px', maxWidth: 'calc(100vw - 32px)', maxHeight: '380px', overflowY: 'auto' }}>
                   <div style={{ padding: '10px 14px 6px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                     Notifications
                   </div>

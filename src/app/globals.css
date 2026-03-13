@@ -686,7 +686,7 @@ textarea.input {
 }
 @media (max-width: 600px) {
   .notifications-dropdown {
-    right: -20px; /* Adjusted from -80px to keep it on screen */
+    right: -135px; /* Shifted further right to clear left edge of screen */
   }
 }
 
