@@ -147,6 +147,24 @@ export default function Home() {
   const [groupInviteToken, setGroupInviteToken] = useState<string | null>(null);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
 
+  // Custom Confirm Modal
+  const [confirmModalState, setConfirmModalState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    isDanger?: boolean;
+    confirmText?: string;
+  }>({ isOpen: false, title: "", message: "", onConfirm: () => { } });
+
+  const confirmAction = (options: { title: string; message: string; onConfirm: () => void; isDanger?: boolean; confirmText?: string }) => {
+    setConfirmModalState({ isOpen: true, ...options });
+  };
+
+  const closeConfirmModal = () => {
+    setConfirmModalState(prev => ({ ...prev, isOpen: false }));
+  };
+
   const selectedGroup = useMemo(
     () => groups.find((group) => group.id === selectedGroupId) || null,
     [groups, selectedGroupId]
@@ -570,53 +588,76 @@ export default function Home() {
   };
 
   const handleUnfriend = async (userId: string) => {
-    setNotice(null);
-    try {
-      await api("/api/friends", {
-        method: "DELETE",
-        body: JSON.stringify({ userId }),
-      });
-      await loadFriends();
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+    confirmAction({
+      title: "Unfriend User",
+      message: "Are you sure you want to unfriend this user? They will be removed from your friends list.",
+      isDanger: true,
+      confirmText: "Unfriend",
+      onConfirm: async () => {
+        setNotice(null);
+        try {
+          await api("/api/friends", {
+            method: "DELETE",
+            body: JSON.stringify({ userId }),
+          });
+          await loadFriends();
+        } catch (error) {
+          setNotice((error as Error).message);
+        }
+      }
+    });
   };
 
 
   const handleDeleteGroup = async (groupId: string) => {
-    setNotice(null);
-    try {
-      if (!window.confirm("Are you sure you want to delete this group and all its sections/items?")) return;
-      await api(`/api/groups/${groupId}`, { method: "DELETE" });
-      setSelectedGroupId(null);
-      await loadGroups();
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+    confirmAction({
+      title: "Delete Group",
+      message: "Are you sure you want to delete this group? All its sections and items will be permanently removed.",
+      isDanger: true,
+      confirmText: "Delete",
+      onConfirm: async () => {
+        setNotice(null);
+        try {
+          await api(`/api/groups/${groupId}`, { method: "DELETE" });
+          setSelectedGroupId(null);
+          await loadGroups();
+        } catch (error) {
+          setNotice((error as Error).message);
+        }
+      }
+    });
   };
 
   const handleRemoveMember = async (groupId: string, userId: string) => {
-    setNotice(null);
-    try {
-      await api(`/api/groups/${groupId}/members`, {
-        method: "DELETE",
-        body: JSON.stringify({ userId }),
-      });
+    confirmAction({
+      title: "Leave Group",
+      message: "Are you sure you want to leave this group? You will lose access to its sections and items.",
+      isDanger: true,
+      confirmText: "Leave",
+      onConfirm: async () => {
+        setNotice(null);
+        try {
+          await api(`/api/groups/${groupId}/members`, {
+            method: "DELETE",
+            body: JSON.stringify({ userId }),
+          });
 
-      // If the user removed themselves, deselect the group
-      if (me?.id === userId) {
-        setSelectedGroupId(null);
-        setGroupSubScreen(null);
-      }
+          // If the user removed themselves, deselect the group
+          if (me?.id === userId) {
+            setSelectedGroupId(null);
+            setGroupSubScreen(null);
+          }
 
-      await loadGroups();
-      // Refresh settings members if settings screen is open
-      if (groupSubScreen === 'settings') {
-        await loadGroupSettings(groupId);
+          await loadGroups();
+          // Refresh settings members if settings screen is open
+          if (groupSubScreen === 'settings') {
+            await loadGroupSettings(groupId);
+          }
+        } catch (error) {
+          setNotice((error as Error).message);
+        }
       }
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+    });
   };
 
   const loadGroupSettings = async (groupId: string) => {
@@ -654,17 +695,26 @@ export default function Home() {
 
   const handleKickMember = async (userId: string) => {
     if (!selectedGroupId) return;
-    setNotice(null);
-    try {
-      await api(`/api/groups/${selectedGroupId}/settings`, {
-        method: "PATCH",
-        body: JSON.stringify({ action: "kick", userId }),
-      });
-      await loadGroups();
-      await loadGroupSettings(selectedGroupId);
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+
+    confirmAction({
+      title: "Kick Member",
+      message: "Are you sure you want to kick this member from the group?",
+      isDanger: true,
+      confirmText: "Kick",
+      onConfirm: async () => {
+        setNotice(null);
+        try {
+          await api(`/api/groups/${selectedGroupId}/settings`, {
+            method: "PATCH",
+            body: JSON.stringify({ action: "kick", userId }),
+          });
+          await loadGroups();
+          await loadGroupSettings(selectedGroupId);
+        } catch (error) {
+          setNotice((error as Error).message);
+        }
+      }
+    });
   };
 
   const handlePromoteToAdmin = async (userId: string) => {
@@ -738,24 +788,41 @@ export default function Home() {
   };
 
   const handleDeleteSection = async (sectionId: string) => {
-    setNotice(null);
-    try {
-      await api(`/api/sections/${sectionId}`, { method: "DELETE" });
-      await loadSections(selectedGroupId);
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+    confirmAction({
+      title: "Delete Section",
+      message: "Are you sure you want to delete this section? All items inside will be lost.",
+      isDanger: true,
+      confirmText: "Delete",
+      onConfirm: async () => {
+        setNotice(null);
+        try {
+          await api(`/api/sections/${sectionId}`, { method: "DELETE" });
+          await loadSections(selectedGroupId);
+        } catch (error) {
+          setNotice((error as Error).message);
+        }
+      }
+    });
   };
 
   const handleDeleteItem = async (itemId: string) => {
     if (!selectedSectionId) return;
-    setNotice(null);
-    try {
-      await api(`/api/items/${itemId}`, { method: "DELETE" });
-      await loadItems(selectedSectionId);
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+
+    confirmAction({
+      title: "Delete Item",
+      message: "Are you sure you want to delete this item?",
+      isDanger: true,
+      confirmText: "Delete",
+      onConfirm: async () => {
+        setNotice(null);
+        try {
+          await api(`/api/items/${itemId}`, { method: "DELETE" });
+          await loadItems(selectedSectionId);
+        } catch (error) {
+          setNotice((error as Error).message);
+        }
+      }
+    });
   };
 
   if (loading) {
@@ -769,66 +836,116 @@ export default function Home() {
   return (
     <div className="app-shell">
       {me && (
-        <div className="top-bar-actions" style={{ alignItems: 'center', gap: '10px' }}>
-          {/* Notifications Bell */}
-          <div style={{ position: 'relative' }}>
-            <button
-              className="gh-dots-btn"
-              style={{ fontSize: '1.1rem' }}
-              onClick={() => {
-                setShowNotifications((v) => !v);
-                if (!showNotifications) markNotificationsRead();
-              }}
-              title="Notifications"
-            >
-              🔔
-              {notifications.filter((n) => !n.read).length > 0 && (
-                <span style={{
-                  position: 'absolute', top: '-4px', right: '-4px',
-                  width: '18px', height: '18px', borderRadius: '50%',
-                  background: 'var(--accent-rose)', color: '#fff',
-                  fontSize: '0.7rem', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: '2px solid var(--bg)',
-                }}>
-                  {Math.min(notifications.filter((n) => !n.read).length, 9)}
-                </span>
-              )}
-            </button>
-            {showNotifications && (
-              <div className="gh-dropdown" style={{ width: '300px', right: 0, maxHeight: '380px', overflowY: 'auto' }}>
-                <div style={{ padding: '10px 14px 6px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Notifications
-                </div>
-                {notifications.length === 0 ? (
-                  <div style={{ padding: '24px 14px', textAlign: 'center', color: 'var(--muted)', fontSize: '0.875rem' }}>
-                    All caught up! 🎉
-                  </div>
-                ) : notifications.map((n) => (
-                  <button
-                    key={n.id}
-                    className="gh-menu-item"
-                    style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '3px', opacity: n.read ? 0.65 : 1 }}
-                    onClick={() => {
-                      setShowNotifications(false);
-                      if (n.groupId) { setSelectedGroupId(n.groupId); setActiveTab('groups'); }
-                    }}
-                  >
-                    <span style={{ fontSize: '0.85rem', fontWeight: n.read ? 400 : 600 }}>{n.message}</span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>
-                      {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </button>
-                ))}
-              </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', width: '100%' }}>
+          <div>
+            {(activeTab === 'groups' && selectedGroup) && (
+              !selectedSection ? (
+                <button className="gh-back-btn" onClick={() => { handleSelectGroup(null); setGroupSubScreen(null); setShowGroupMenu(false); }} title="Back" style={{ border: 'none', background: 'transparent', fontSize: '1.2rem', padding: '4px 8px' }}>
+                  ←
+                </button>
+              ) : (
+                <button className="gh-back-btn" onClick={() => handleSelectSection(null)} title="Back" style={{ border: 'none', background: 'transparent', fontSize: '1.2rem', padding: '4px 8px' }}>
+                  ←
+                </button>
+              )
             )}
           </div>
-          <button className="btn-outline" onClick={toggleTheme}>
-            {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
-          </button>
-          <button className="btn-outline" onClick={handleLogout}>Logout</button>
+          <div className="top-bar-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* Notifications Bell */}
+            <div style={{ position: 'relative' }}>
+              <button
+                className="gh-dots-btn"
+                style={{ fontSize: '1.1rem' }}
+                onClick={() => {
+                  setShowNotifications((v) => !v);
+                  if (!showNotifications) markNotificationsRead();
+                }}
+                title="Notifications"
+              >
+                🔔
+                {notifications.filter((n) => !n.read).length > 0 && (
+                  <span style={{
+                    position: 'absolute', top: '-4px', right: '-4px',
+                    width: '18px', height: '18px', borderRadius: '50%',
+                    background: 'var(--accent-rose)', color: '#fff',
+                    fontSize: '0.7rem', fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '2px solid var(--bg)',
+                  }}>
+                    {Math.min(notifications.filter((n) => !n.read).length, 9)}
+                  </span>
+                )}
+              </button>
+              {showNotifications && (
+                <div className="gh-dropdown" style={{ width: '300px', maxWidth: 'calc(100vw - 24px)', right: '-12px', maxHeight: '380px', overflowY: 'auto' }}>
+                  <div style={{ padding: '10px 14px 6px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Notifications
+                  </div>
+                  {notifications.length === 0 ? (
+                    <div style={{ padding: '24px 14px', textAlign: 'center', color: 'var(--muted)', fontSize: '0.875rem' }}>
+                      All caught up! 🎉
+                    </div>
+                  ) : notifications.map((n) => (
+                    <button
+                      key={n.id}
+                      className="gh-menu-item"
+                      style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '3px', opacity: n.read ? 0.65 : 1 }}
+                      onClick={() => {
+                        setShowNotifications(false);
+                        if (n.groupId) { setSelectedGroupId(n.groupId); setActiveTab('groups'); }
+                      }}
+                    >
+                      <span style={{ fontSize: '0.85rem', fontWeight: n.read ? 400 : 600 }}>{n.message}</span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>
+                        {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button className="btn-outline" onClick={toggleTheme} title="Toggle theme">
+              {theme === 'light' ? '🌙' : '☀️'}
+            </button>
+            <button className="btn-outline" onClick={handleLogout}>Logout</button>
+          </div>
         </div>
       )}
+
+      {/* Confirm Modal Backdrop & Container */}
+      {confirmModalState.isOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999, padding: '20px', animation: 'fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+        }}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', animation: 'slide-down 0.24s cubic-bezier(0.16, 1, 0.3, 1)', padding: '24px' }}>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '8px', color: confirmModalState.isDanger ? 'var(--accent-rose)' : 'var(--text)' }}>
+              {confirmModalState.title}
+            </h3>
+            <p style={{ color: 'var(--muted)', fontSize: '0.95rem', marginBottom: '24px', lineHeight: 1.5 }}>
+              {confirmModalState.message}
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button className="action-btn action-btn-secondary" onClick={closeConfirmModal} style={{ flex: 1 }}>
+                Cancel
+              </button>
+              <button
+                className={`action-btn ${confirmModalState.isDanger ? 'action-btn-danger' : 'action-btn-primary'}`}
+                onClick={() => {
+                  confirmModalState.onConfirm();
+                  closeConfirmModal();
+                }}
+                style={{ flex: 1 }}
+              >
+                {confirmModalState.confirmText || 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!me && (
         <div className="hero">
           <div className="toolbar">
@@ -841,8 +958,8 @@ export default function Home() {
             </div>
             <div className="toolbar-actions">
               {/* Locked pill removed */}
-              <button className="btn-outline" onClick={toggleTheme}>
-                {theme === "light" ? "dark mode" : "light mode"}
+              <button className="btn-outline" onClick={toggleTheme} title="Toggle theme">
+                {theme === "light" ? "🌙" : "☀️"}
               </button>
             </div>
           </div>
@@ -999,8 +1116,8 @@ export default function Home() {
                       <div className="user-actions">
                         {isFriend ? (
                           <>
-                            <button className="btn-outline" onClick={() => handleUnfriend(user.id)} style={{ border: 'none', color: 'var(--muted)' }}>
-                              unfriend
+                            <button className="btn-outline" onClick={() => handleUnfriend(user.id)}>
+                              Unfriend
                             </button>
                             {invitingUserId === user.id ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end', minWidth: '200px' }}>
@@ -1083,20 +1200,20 @@ export default function Home() {
                           </>
                         ) : isIncoming ? (
                           <>
-                            <button className="btn-outline" onClick={() => handleAcceptRequest(user.id)} style={{ border: 'none', background: 'var(--accent)', color: 'var(--bg)' }}>
-                              accept
+                            <button className="btn-outline" onClick={() => handleAcceptRequest(user.id)} style={{ background: 'var(--accent)', color: 'var(--bg)', border: '1.5px solid var(--accent)' }}>
+                              Accept
                             </button>
-                            <button className="btn-outline" onClick={() => handleDeclineOrCancelRequest(user.id)} style={{ border: 'none', color: 'var(--muted)' }}>
-                              decline
+                            <button className="btn-outline" onClick={() => handleDeclineOrCancelRequest(user.id)}>
+                              Decline
                             </button>
                           </>
                         ) : isOutgoing ? (
-                          <button className="btn-outline" onClick={() => handleDeclineOrCancelRequest(user.id)} style={{ border: 'none', color: 'var(--muted)' }}>
-                            cancel req
+                          <button className="btn-outline" onClick={() => handleDeclineOrCancelRequest(user.id)}>
+                            Cancel Req
                           </button>
                         ) : (
                           <button className="btn-outline" onClick={() => handleSendFriendRequest(user.id)}>
-                            send req
+                            Add Friend
                           </button>
                         )}
                       </div>
@@ -1155,12 +1272,9 @@ export default function Home() {
                 </>
               ) : !selectedSection ? (
                 <>
-                  {/* Group header: back + name + 3-dot menu in same row */}
+                  {/* Group header: name + 3-dot menu in same row */}
                   <div className="group-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      <button className="gh-back-btn" onClick={() => { handleSelectGroup(null); setGroupSubScreen(null); setShowGroupMenu(false); }}>
-                        ← Back
-                      </button>
                       <div className="avatar-circle" style={{ width: '44px', height: '44px', fontSize: '1.1rem', flexShrink: 0 }}>
                         {selectedGroup.name.slice(0, 1).toUpperCase()}
                       </div>
@@ -1469,10 +1583,9 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  {/* Section view: back + section name in header */}
+                  {/* Section view: section name in header */}
                   <div className="group-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <button className="gh-back-btn" onClick={() => handleSelectSection(null)}>← Back</button>
                       <div className="section-icon">§</div>
                       <span style={{ fontWeight: 700, fontSize: '1.05rem' }}>{selectedSection.name}</span>
                     </div>
